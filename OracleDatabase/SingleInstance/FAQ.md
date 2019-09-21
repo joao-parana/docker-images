@@ -1,7 +1,7 @@
 # FAQ: Docker and Oracle Database
 
 ## How do I change the timezone of my container
-As of Docker 17.06-ce, Docker does not yet provide a way to pass down the `TZ` Unix environment variable from the host to the container. Because of that all containers run in the UTC timezone. If you would like to have your database run in a different timezone you can pass on the `TZ` environment variable within the `docker run` command via the `-e` option. An example would be: `docker run ... -e TZ="Europe/Vienna" oracle/database:12.2.0.1-ee"`
+As of Docker 17.06-ce, Docker does not yet provide a way to pass down the `TZ` Unix environment variable from the host to the container. Because of that all containers run in the UTC timezone. If you would like to have your database run in a different timezone you can pass on the `TZ` environment variable within the `docker run` command via the `-e` option. An example would be: `docker run ... -e TZ="Europe/Vienna" oracle/database:12.2.0.1-ee`. Another option would be to specify two read-only volume mounts: `docker run ... -v /etc/timezone:/etc/timezone:ro -v /etc/localtime:/etc/localtime:ro oracle/database:12.2.0.1-ee`. This will synchronize the timezone of the the container with that of the Docker host.
 
 ## checkSpace.sh: ERROR - There is not enough space available in the docker container.
 This error is thrown when there is no sufficient space available within the Docker container to unzip the install binaries and run the installation of the Oracle database. The Docker container runs the `df` Unix command, meaning that even if you think there should be enough space, there certainly isn't within the container.  
@@ -19,3 +19,21 @@ This is a Unix filesystem permission issue. Docker by default will map the `uid`
 * Use named volumes
 * Change the ownership of your folder to `54321`
 * Change the permissions of your folder so that the `uid 54321` has write permissions
+
+## ORA-00600: internal error code, arguments: [pesldl03_MMap: errno 1 errmsg Operation not permitted], [], [], [], [], [], [], [], [], [], [], []
+This error happens if you try to use native compilation for PL/SQL but haven't assigned `exec` rights to `/dev/shm`.
+For example, the below would raise the error in such case:
+```
+alter session set plsql_code_type='NATIVE';
+
+create or replace procedure test as
+begin
+   null;
+end;
+/
+```
+Docker, by default, doesn't assign `exec` rights to `/dev/shm` which is where the native compiled code is stored and executed.
+As you don't have execution rights to it, however, you get the error `Operation not permitted`.
+
+Run the container with `-v /dev/shm --tmpfs /dev/shm:rw,exec,size=<yoursize>` instead, the important part being the `exec` in `--tmpfs /dev/shm:rw,exec,size=<yoursize>`.
+Also make sure you assign an appropriate size as the default Docker uses is only 64MB. 1GB and more is recommended.
